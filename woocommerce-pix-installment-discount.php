@@ -2,97 +2,68 @@
 /*
 Plugin Name: Nodle Pix Desconto & Parcelamento no Cartão
 Description: Aplica desconto para pagamentos à vista no Pix e/ou boleto e exibe parcelamento no cartão. Solução pensada no mercado brasileiro.
-Version: 2.2.1
+Version: 2.1
 Contributors: Rafael K B e Douglas G S
 Author: Nodle - Desenvolvendo Soluções Reais
 Author URI: https://nodle.com.br
 */
-// Adiciona a versão mínima do PHP
-if (version_compare(PHP_VERSION, '7.4', '<')) {
-    // Exibe uma mensagem de erro caso a versão mínima não seja atendida
-    die('Este plugin requer pelo menos o PHP 7.4 para funcionar corretamente.');
-}
-// Adiciona a versão mínima do WordPress
-global $wp_version;
-if (version_compare($wp_version, '6.0', '<')) {
-    // Exibe uma mensagem de erro caso a versão mínima não seja atendida
-    die('Este plugin requer pelo menos o WordPress 6.0 para funcionar corretamente.');
-}
+// É com imensa gratidão que prestamos uma homenagem especial a Rafael, cuja coragem desbravou as fronteiras do desconhecido, ao conceber com maestria uma solução de desconto para o PIX, erigindo-a como a pedra angular deste plugin.
+
 // Mostrar parcelamento no cartão
-add_shortcode( 'price_parcelas', 'price_parcelas_shortcode' );
-function price_parcelas_shortcode() {
-    if ( is_product() ) {
-        $product_id = get_the_ID();
-        $product = wc_get_product( $product_id );
-        $installment_enabled = get_option( 'installment_enabled', 'no' ); // verifica se o parcelamento está habilitado
+add_action( 'woocommerce_get_price_html', 'lpb_wc_add_installment', 5, 2 );
+function lpb_wc_add_installment( $price_html, $product ) {
+    $installment_enabled = get_option( 'installment_enabled', 'no' ); // verifica se o parcelamento está habilitado
 
-        $sale_price = $product->get_sale_price();
-        if ( $sale_price && $installment_enabled === 'yes' ) {
-            $installment_max_times = get_option( 'installment_max_times', 12 ); // obtém o número máximo de parcelas das opções
-            $installment_text_before = get_option( 'installment_text_before', 'em até' ); // obtém o texto antes do parcelamento das opções
-            $installment_text_after_times = get_option( 'installment_text_after_times', 'x de' ); // obtém o texto após o número de parcelas das opções
-            $installment_text_after_price = get_option( 'installment_text_after_price', 'Sem juros' ); // obtém o texto após o valor da parcela das opções
-            $installment_min_amount_per_installment = get_option( 'installment_min_amount_per_installment', 0 ); // obtém o valor mínimo por parcela
+    $price = $product->get_price();
+    if ( $price && $installment_enabled === 'yes' ) {
+        $installment_max_times = get_option( 'installment_max_times', 12 ); // obtém o número máximo de parcelas das opções
+        $installment_text_before = get_option( 'installment_text_before', 'em até' ); // obtém o texto antes do parcelamento das opções
+        $installment_text_after_times = get_option( 'installment_text_after_times', 'x de' ); // obtém o texto após o número de parcelas das opções
+        $installment_text_after_price = get_option( 'installment_text_after_price', 'Sem juros' ); // obtém o texto após o valor da parcela das opções
+        $installment_min_amount_per_installment = get_option( 'installment_min_amount_per_installment', 0 ); // obtém o valor mínimo por parcela
 
-            $installment_times = floor( $sale_price / $installment_min_amount_per_installment );
-            $installment_price = $sale_price / $installment_times;
-            $installment_price_html = wc_price( $installment_price );
+        $installment_times = floor( $price / $installment_min_amount_per_installment );
+        $installment_price = $price / $installment_times;
+        $installment_price_html = wc_price( $installment_price );
 
-            if ( $installment_times <= $installment_max_times ) {
-                $installment_info = "$installment_text_before $installment_times $installment_text_after_times $installment_price_html $installment_text_after_price";
-                return "<div class='installment-info-wrapper'>
-                            <span class='installment-text'>$installment_info</span>
-                        </div>";
-            }
+        if ( $installment_times <= $installment_max_times ) {
+            $installment_info = "$installment_text_before $installment_times $installment_text_after_times $installment_price_html $installment_text_after_price";
+            $price_html = "<div class='installment-info-wrapper'>
+                                <span class='installment-text'>$installment_info</span>
+                            </div>";
         }
     }
 
-    return '';
+    $original_price_html = wc_price( $price );
+    $price_html = "<div class='original-price-wrapper'>
+                        <span class='original-price'>$original_price_html</span>
+                    </div>" . $price_html;
+
+    return $price_html;
 }
 
 // Mostrar valor no PIX
-add_shortcode( 'price_pix', 'price_pix_shortcode' );
-function price_pix_shortcode() {
-    if ( is_product() ) {
-        $product_id = get_the_ID();
-        $product = wc_get_product( $product_id );
-        $pix_discount_enabled = get_option( 'pix_discount_enabled', 'no' ); // verifica se o desconto no Pix está habilitado
-        if ( $pix_discount_enabled === 'yes' ) {
-            $discount_percentage = get_option( 'pix_discount_percentage', 10 ); // obtém o percentual de desconto das opções
-            $prefix = get_option( 'pix_discount_prefix', 'ou' ); // obtém o texto antes do preço com desconto das opções
-            $text_after_price = get_option( 'pix_discount_text_after', ' à vista no Pix com '.$discount_percentage.'% de desconto! 🔥' ); // obtém o texto após o preço com desconto das opções
+add_action( 'woocommerce_get_price_html', 'lpb_wc_add_price_with_discount', 10, 2 );
+function lpb_wc_add_price_with_discount( $price_html, $product ) {
+    $pix_discount_enabled = get_option( 'pix_discount_enabled', 'no' ); // verifica se o desconto no Pix está habilitado
+    if ( $pix_discount_enabled === 'yes' ) {
+        $discount_percentage = get_option( 'pix_discount_percentage', 10 ); // obtém o percentual de desconto das opções
+        $prefix = get_option( 'pix_discount_prefix', 'ou' ); // obtém o texto antes do preço com desconto das opções
+        $text_after_price = get_option( 'pix_discount_text_after', ' à vista no Pix com '.$discount_percentage.'% de desconto! 🔥' ); // obtém o texto após o preço com desconto das opções
 
-            $sale_price = $product->get_sale_price();
-            if ( $sale_price ) {
-                $discounted_price = $sale_price - ( $sale_price * ( $discount_percentage / 100 ) );
-                $discounted_price_html = wc_price( $discounted_price );
-                return "<div class='price-with-discount-wrapper'>
-                            <span class='prefix'>$prefix</span>
-                            <span class='discounted-price'>$discounted_price_html</span>
-                            <span class='text-after-price'>$text_after_price</span>
-                        </div>";
-            }
+        $price = $product->get_price();
+        if ( $price ) {
+            $discounted_price = $price - ( $price * ( $discount_percentage / 100 ) );
+            $discounted_price_html = wc_price( $discounted_price );
+            $price_html .= "<div class='price-with-discount-wrapper'>
+                                <span class='prefix'>$prefix</span>
+                                <span class='discounted-price'>$discounted_price_html</span>
+                                <span class='text-after-price'>$text_after_price</span>
+                            </div>";
         }
     }
-
-    return '';
+    return $price_html;
 }
-
-// Mostrar preço do produto
-add_shortcode( 'price_produto', 'price_produto_shortcode' );
-function price_produto_shortcode() {
-    if ( is_product() ) {
-        $product_id = get_the_ID();
-        $product = wc_get_product( $product_id );
-        $price_html = $product->get_price_html();
-        return "<div class='original-price-wrapper'>
-                    <span class='original-price'>$price_html</span>
-                </div>";
-    }
-
-    return '';
-}
-
 
 // Adicionar menu de configurações
 add_action( 'admin_menu', 'pix_installment_add_admin_menu' );
